@@ -18,11 +18,11 @@ PAIR = 'BTCUSD'
 
 # HYPERPARAMETERS
 PRED_PERIOD = '1min'
-WINDOW_LEN = 15 # price data window
-FORECAST_LEN = 15 # how many WINDOW_LEN's distance in future to predict
-EPOCHS = 5
+WINDOW_LEN = 60 # price data window
+FORECAST_LEN = 3 # how many WINDOW_LEN's distance in future to predict
+EPOCHS = 10
 BATCH_SIZE = 64
-SKIP_ROWS = 171400 # use for 'development' mode
+SKIP_ROWS = 2 # use for 'development' mode
 
 # FORMATTING, etc.
 DATA_DIR = 'data'
@@ -105,6 +105,8 @@ def load_data():
         for year, filename in zip(years, fnmatch.filter(filelist, FILE_FILTER)):
             if not year == '2019':
                 continue
+            if not year == '2018':
+                continue
             print('LOADING FILE FOR YEAR: ', year)
             file = os.path.join(path, filename)
             df = pd.read_csv(f'{file}', skiprows=SKIP_ROWS, names=COL_NAMES)
@@ -132,20 +134,17 @@ main_df['target'] = list(map(classify, main_df[f'{PAIR}_close'], main_df['future
 times = sorted(main_df.index.values)
 last_5pct = times[-int(0.05*len(times))]
 
-# split data
+# SPLIT DATA INTO TRAIN, VALIDATE
 validation_main_df = main_df[(main_df.index >= last_5pct)]
 main_df = main_df[(main_df.index < last_5pct)]
 
-# print(main_df.head())
-
 train_x, train_y = preprocess_df(main_df)
 validation_x, validation_y = preprocess_df(validation_main_df)
-# import pdb; pdb.set_trace()
 
 # shows balance
 print(f'train data: {len(train_x)}, validation data: {len(validation_x)}')
-print(f'Dont buys: {train_y.count(0)} buys: {train_y.count(1)}')
-print(f'VALIDATION Dont buys: {validation_y.count(0)} VALIDATION buys: {validation_y.count(1)}')
+print(f'TRAIN do not buys: {train_y.count(0)} TRAIN buys: {train_y.count(1)}')
+print(f'VALIDATION Do not buys: {validation_y.count(0)} VALIDATION buys: {validation_y.count(1)}')
 
 model = Sequential()
 model.add(LSTM(128, input_shape=(train_x.shape[1:]), return_sequences=True))
