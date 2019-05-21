@@ -274,16 +274,17 @@ class PriceRNN:
 
 
 # TODO: stochastic grid search hyperparam optimization
-for nums in np.random.randint(100, size=(10, 2)):
-    winlen = int(nums[0])
-    flen = int(nums[1])
+lens = [(60, 5), (60, 10), (60, 20), (120, 5), (120, 10), (120, 20)]
+for wlen, flen in lens:
+    wlen = int(wlen)
+    flen = int(flen)
     print("RUNNING MODEL: ")
-    print("window length: ", winlen)
+    print("window length: ", wlen)
     print("forecast length: ", flen)
     PriceRNN(
         pair="BTCUSD",
         period="1min",
-        window_len=winlen,
+        window_len=wlen,
         forecast_len=flen,
         years=["2018"],
         epochs=5,
