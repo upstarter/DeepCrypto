@@ -1,5 +1,5 @@
 """
-An RNN deep neural network model for price sequence data
+An deep RNN model for price sequence data
 """
 import os
 import re
@@ -26,6 +26,7 @@ class PriceRNN:
                        years=['2015', '2016', '2017', '2018', '2019'],
                        epochs=1,
                        batch_size=64,
+                       hidden_node_sizes=[128]*4,
                        data_provider='gemini',
                        data_dir='data',
                        skip_rows=2):
@@ -39,6 +40,7 @@ class PriceRNN:
         self.years = years
         self.epochs = epochs
         self.batch_size = batch_size
+        self.hidden_node_sizes = hidden_node_sizes
         self.name = f'{pair}-{window_len}-seq-{forecast_len}-pred-{int(time.time())}'
         self.skip_rows = skip_rows
         self.col_names = ['time', 'date', 'symbol', 'open', 'high', 'low', 'close', 'volume']
@@ -54,7 +56,7 @@ class PriceRNN:
 
     def normalize_df(self, df):
         print('NORMALIZING DATA:\n', df.sample(10))
-        # normalize df.columns (BTCUSD_close, BTCUSD_volume)
+        # normalize df.columns ({PAIR}_close, {PAIR}_volume)
         for col in df.columns:
             if col != 'target':
                 # start simple, scale to interval [0,1]
@@ -109,7 +111,7 @@ class PriceRNN:
         print('TEST DATA SAMPLE:\n', y[0:2])
         return np.array(x), y
 
-    # structure, normalize, arrange, balance
+    # normalize, arrange, balance
     def preprocess_df(self, df):
         df = df.drop('future', 1)
         df = self.normalize_df(df)
@@ -171,24 +173,24 @@ class PriceRNN:
 
         # how to compute number of neurons per layer?
         # t - number of time steps
-        # n - length of input vector in each time step
-        # m - length of output vector (number of classes)
+            # n - length of input vector in each time step
+            # m - length of output vector (number of classes)
         # i - number of training examples
         # 4(𝑛𝑚+𝑛2)
         model = Sequential()
-        model.add(LSTM(128, input_shape=(x_train.shape[1:]), return_sequences=True))
+        model.add(LSTM(self.hidden_node_sizes[0], input_shape=(x_train.shape[1:]), return_sequences=True))
         model.add(Dropout(0.2))
         model.add(BatchNormalization())
 
-        model.add(LSTM(128, input_shape=(x_train.shape[1:]), return_sequences=True))
+        model.add(LSTM(self.hidden_node_sizes[1], input_shape=(x_train.shape[1:]), return_sequences=True))
         model.add(Dropout(0.2))
         model.add(BatchNormalization())
 
-        model.add(LSTM(128, input_shape=(x_train.shape[1:]), return_sequences=True))
+        model.add(LSTM(self.hidden_node_sizes[2], input_shape=(x_train.shape[1:]), return_sequences=True))
         model.add(Dropout(0.2))
         model.add(BatchNormalization())
 
-        model.add(LSTM(128, input_shape=(x_train.shape[1:])))
+        model.add(LSTM(self.hidden_node_sizes[3], input_shape=(x_train.shape[1:])))
         model.add(Dropout(0.2))
         model.add(BatchNormalization())
 
@@ -229,13 +231,15 @@ class PriceRNN:
 
 #TODO: stochastic grid search hyperparam optimization
 for nums in np.random.randint(100, size=(10, 2)):
+    winlen = int(nums[0])
+    flen = int(nums[1])
+    print('RUNNING MODEL: ')
+    print('window length: ', winlen)
+    print('forecast length: ', flen)
     PriceRNN(pair='BTCUSD',
             period='1min',
-            window_len=nums[0],
-            forecast_len=nums[1],
+            window_len=winlen,
+            forecast_len=flen,
             years=['2018'],
             epochs=5,
-            batch_size=128,
-            data_provider='gemini',
-            data_dir='data',
-            skip_rows=370000).run()
+            skip_rows=450000).run()

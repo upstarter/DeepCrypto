@@ -1,8 +1,9 @@
 # DeepCrypto
 Forecast crypto using deep Recurrent Neural Networks with LSTM.
 
-# Work in Progress
+## _Work in Progress_
+#### Stanford University CS230, Deep Learning, Spring 2019, Prof. Andrew NG
 ## Roadmap
-- Allow automated hyperparameter fine-tuning and optimization
-- Allow user-defined normalization, classification strategies
+- Enable automated hyperparameter fine-tuning and optimization
+- Enable user-defined normalization, classification strategies
 - Better observability, visualization
