@@ -27,6 +27,8 @@ class PriceRNN:
         forecast_len=3,
         years=["2015", "2016", "2017", "2018", "2019"],
         epochs=1,
+        testpct=0.20,
+        loss_func="sparse_categorical_crossentropy",
         batch_size=64,
         hidden_node_sizes=[128] * 4,
         data_provider="gemini",
@@ -42,9 +44,11 @@ class PriceRNN:
         self.forecast_len = forecast_len  # how many data points in future to predict
         self.years = years
         self.epochs = epochs
+        self.testpct = testpct
+        self.loss_func = loss_func
         self.batch_size = batch_size
         self.hidden_node_sizes = hidden_node_sizes
-        self.name = f"{pair}-{window_len}-seq-{forecast_len}-pred-{int(time.time())}"
+        self.name = f"{pair}-{window_len}-window-{forecast_len}-pred-{int(time.time())}"
         self.skip_rows = skip_rows
         self.col_names = [
             "time",
@@ -59,8 +63,7 @@ class PriceRNN:
         self.file_filter = f"{data_provider}_{pair}_*{period}.csv"
 
     def classify(self, current, future):
-        span = float(future) - float(current)
-        if 0.0 < span <= float("inf"):
+        if float(future) > float(current):
             return 1
         else:
             return 0
@@ -98,7 +101,7 @@ class PriceRNN:
             elif target == 1:
                 buys.append([seq, target])
 
-        # randomize to prevent skew
+        # randomize
         random.shuffle(buys)
         random.shuffle(sells)
         # balance out the distribution of buys and sells
@@ -119,7 +122,7 @@ class PriceRNN:
             y.append(target)
 
         print("TRAINING DATA SAMPLE:\n", x[0][0][0:2][:])
-        print("TEST DATA SAMPLE:\n", y[0:2])
+        print("TEST DATA SAMPLE:\n", len(y))
         return np.array(x), y
 
     # normalize, arrange, balance
@@ -161,6 +164,9 @@ class PriceRNN:
                     main_df = df
                 else:
                     main_df = main_df.append(df)
+                # if there are gaps in data, use previously known values
+                main_df.fillna(method="ffill", inplace=True)
+                main_df.dropna(inplace=True)
         return main_df
 
     def transform_df(self, df):
@@ -170,13 +176,13 @@ class PriceRNN:
         df["target"] = list(map(self.classify, df[f"{self.pair}_close"], df["future"]))
         return df
 
-    def split_data(self, df):
+    def preprocess_and_split(self, df):
         times = sorted(df.index.values)
-        last_5pct = times[-int(0.05 * len(times))]
+        testpct = times[-int(self.testpct * len(times))]
 
-        # SPLIT DATA INTO TRAIN, VALIDATE
-        test_df = df[(df.index >= last_5pct)]
-        df = df[(df.index < last_5pct)]
+        # SPLIT DATA INTO (1-testpct)% TRAIN, (testpct)% VALIDATE
+        test_df = df[(df.index >= testpct)]
+        df = df[(df.index < testpct)]
 
         x_train, y_train = self.preprocess_df(df)
         x_test, y_test = self.preprocess_df(test_df)
@@ -185,7 +191,7 @@ class PriceRNN:
     def run(self):
         main_df = self.extract_data()
         main_df = self.transform_df(main_df)
-        x_train, y_train, x_test, y_test = self.split_data(main_df)
+        x_train, y_train, x_test, y_test = self.preprocess_and_split(main_df)
 
         # shows balance
         print(f"train data: {len(x_train)}, validation data: {len(x_test)}")
@@ -194,15 +200,10 @@ class PriceRNN:
             f"VALIDATION Do not buys: {y_test.count(0)} VALIDATION buys: {y_test.count(1)}"
         )
 
-        # how to compute number of neurons per layer?
-        # t - number of time steps
-        # n - length of input vector in each time step
-        # m - length of output vector (number of classes)
-        # i - number of training examples
-        # 4(𝑛𝑚+𝑛2)
         model = Sequential()
+        print("train shape", x_train.shape[1:])
         model.add(
-            LSTM(
+            CuDNNLSTM(
                 self.hidden_node_sizes[0],
                 input_shape=(x_train.shape[1:]),
                 return_sequences=True,
@@ -211,27 +212,11 @@ class PriceRNN:
         model.add(Dropout(0.2))
         model.add(BatchNormalization())
 
-        model.add(
-            LSTM(
-                self.hidden_node_sizes[1],
-                input_shape=(x_train.shape[1:]),
-                return_sequences=True,
-            )
-        )
-        model.add(Dropout(0.2))
+        model.add(CuDNNLSTM(self.hidden_node_sizes[1], return_sequences=True))
+        model.add(Dropout(0.1))
         model.add(BatchNormalization())
 
-        model.add(
-            LSTM(
-                self.hidden_node_sizes[2],
-                input_shape=(x_train.shape[1:]),
-                return_sequences=True,
-            )
-        )
-        model.add(Dropout(0.2))
-        model.add(BatchNormalization())
-
-        model.add(LSTM(self.hidden_node_sizes[3], input_shape=(x_train.shape[1:])))
+        model.add(CuDNNLSTM(self.hidden_node_sizes[2]))
         model.add(Dropout(0.2))
         model.add(BatchNormalization())
 
@@ -242,18 +227,16 @@ class PriceRNN:
 
         opt = tf.keras.optimizers.Adam(lr=0.001, decay=1e-6)
 
-        model.compile(
-            loss="sparse_categorical_crossentropy", optimizer=opt, metrics=["accuracy"]
-        )
+        model.compile(loss=self.loss_func, optimizer=opt, metrics=["accuracy"])
 
         if not os.path.exists("logs"):
             os.makedirs("logs")
         tensorboard = TensorBoard(log_dir=f"logs/{self.name}")
 
-        # unique filename to include epoch and validation accuracy for that epoch
         if not os.path.exists("models"):
             os.makedirs("models")
 
+        # unique filename to include epoch and validation accuracy for that epoch
         filepath = "RNN_Final-{epoch:02d}-{val_acc:.3f}"
         checkpoint = ModelCheckpoint(
             "models/{}.model".format(
@@ -274,19 +257,20 @@ class PriceRNN:
 
 
 # TODO: stochastic grid search hyperparam optimization
-lens = [(60, 5), (60, 10), (60, 20), (120, 5), (120, 10), (120, 20)]
+lens = [(60, 3), (120, 3), (180, 3), (60, 5), (120, 5), (180, 5)]
 for wlen, flen in lens:
     wlen = int(wlen)
     flen = int(flen)
     print("RUNNING MODEL: ")
-    print("window length: ", wlen)
-    print("forecast length: ", flen)
+    print("\twindow length: ", wlen)
+    print("\tforecast length: ", flen)
     PriceRNN(
         pair="BTCUSD",
         period="1min",
         window_len=wlen,
         forecast_len=flen,
-        years=["2018"],
-        epochs=5,
-        skip_rows=450000,
+        years=["2017"],
+        epochs=10,
+        data_dir="/crypto_data",
+        skip_rows=2,
     ).run()

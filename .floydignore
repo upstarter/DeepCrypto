@@ -13,5 +13,7 @@ var
 *.swp
 .DS_Store
 doc/
+models/
+logs/
 tmp/
 data/
