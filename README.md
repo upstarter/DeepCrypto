@@ -6,4 +6,4 @@ Forecast crypto using deep Recurrent Neural Networks with LSTM.
 ## Roadmap
 - Enable automated hyperparameter optimization and fine-tuning
 - Enable user-defined normalization, classification strategies
-- Better observability, visualization
+- Better data management, observability, visualization

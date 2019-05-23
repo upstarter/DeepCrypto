@@ -27,7 +27,8 @@ class PriceRNN:
         forecast_len=3,
         years=["2015", "2016", "2017", "2018", "2019"],
         epochs=1,
-        testpct=0.20,
+        dropout=0.3,
+        testpct=0.25,
         loss_func="sparse_categorical_crossentropy",
         batch_size=64,
         hidden_node_sizes=[128] * 4,
@@ -44,6 +45,7 @@ class PriceRNN:
         self.forecast_len = forecast_len  # how many data points in future to predict
         self.years = years
         self.epochs = epochs
+        self.dropout = dropout
         self.testpct = testpct
         self.loss_func = loss_func
         self.batch_size = batch_size
@@ -77,9 +79,9 @@ class PriceRNN:
                 df[col] = (df[col] - df[col].mean()) / (df[col].max() - df[col].min())
         return df
 
-    def arrange_df(self, df):
+    def convert_to_seq(self, df):
         print("ARRANGING NORMALIZED DATA:\n", df.sample(10))
-        # arrange data into seq -> target pairs for training to see how
+        # convert data into seq -> target pairs for training to see how
         # WINDOW_LEN 'lookback' period effects prediction accuracy
         seq_data = []
         # sliding window cache - old values drop off
@@ -129,7 +131,7 @@ class PriceRNN:
     def preprocess_df(self, df):
         df = df.drop("future", 1)
         df = self.normalize_df(df)
-        seq_data = self.arrange_df(df)
+        seq_data = self.convert_to_seq(df)
         seq_data = self.balance(seq_data)
         x, y = self.split_sequences(seq_data)
         return x, y
@@ -164,9 +166,9 @@ class PriceRNN:
                     main_df = df
                 else:
                     main_df = main_df.append(df)
-                # if there are gaps in data, use previously known values
-                main_df.fillna(method="ffill", inplace=True)
-                main_df.dropna(inplace=True)
+        # if there are gaps in data, use previously known values
+        main_df.fillna(method="ffill", inplace=True)
+        main_df.dropna(inplace=True)
         return main_df
 
     def transform_df(self, df):
@@ -209,19 +211,19 @@ class PriceRNN:
                 return_sequences=True,
             )
         )
-        model.add(Dropout(0.2))
+        model.add(Dropout(self.dropout))
         model.add(BatchNormalization())
 
         model.add(CuDNNLSTM(self.hidden_node_sizes[1], return_sequences=True))
-        model.add(Dropout(0.1))
+        model.add(Dropout(self.dropout))
         model.add(BatchNormalization())
 
         model.add(CuDNNLSTM(self.hidden_node_sizes[2]))
-        model.add(Dropout(0.2))
+        model.add(Dropout(self.dropout))
         model.add(BatchNormalization())
 
         model.add(Dense(32, activation="relu"))
-        model.add(Dropout(0.2))
+        model.add(Dropout(self.dropout))
 
         model.add(Dense(2, activation="softmax"))
 
@@ -256,21 +258,25 @@ class PriceRNN:
         print(model.evaluate(x_test, y_test))
 
 
-# TODO: stochastic grid search hyperparam optimization
-lens = [(60, 3), (120, 3), (180, 3), (60, 5), (120, 5), (180, 5)]
-for wlen, flen in lens:
+# TODO: stochastic random search and/or bayesian hyperparam optimization
+hypers = [(180, 3, 0.6), (360, 3, 0.6)]
+for wlen, flen, dropout in hypers:
     wlen = int(wlen)
     flen = int(flen)
+    dropout = float(dropout)
     print("RUNNING MODEL: ")
     print("\twindow length: ", wlen)
     print("\tforecast length: ", flen)
+    print("\tdropout ratio: ", dropout)
     PriceRNN(
         pair="BTCUSD",
         period="1min",
         window_len=wlen,
         forecast_len=flen,
-        years=["2017"],
-        epochs=10,
+        dropout=dropout,
+        epochs=50,
+        batch_size=256,
+        years=["2015", "2016", "2017", "2018", "2019"],
         data_dir="/crypto_data",
         skip_rows=2,
     ).run()
