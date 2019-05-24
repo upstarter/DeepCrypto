@@ -265,7 +265,6 @@ class PriceRNN:
             callbacks=[tensorboard, checkpoint],
         )
 
-        history = model.fit(X, Y, epochs=100, validation_data=(valX, valY))
         print(history.history["loss"])
         print(history.history["acc"])
         print(history.history["val_loss"])
@@ -277,14 +276,15 @@ class PriceRNN:
         pyplot.ylabel("loss")
         pyplot.xlabel("epoch")
         pyplot.legend(["train", "validation"], loc="upper right")
-        plt.savefig(f"plots/{self.name}.png")
+        pyplot.savefig(f"plots/{self.name}.png")
 
         print(model.evaluate(x_test, y_test))
 
 
-# We aim to answer: If you were to buy at random, what interval in mins shows best probability of profit
+# Model to answer: If you were to buy at random based on model prediction,  what
+# hold period shows best probability of profit
 # TODO: stochastic random search and/or bayesian hyperparam optimization
-hypers = [(120, 3, 0.5)]
+hypers = [(120, 3, 0.2)]
 for wlen, flen, dropout in hypers:
     wlen = int(wlen)
     flen = int(flen)
@@ -299,11 +299,11 @@ for wlen, flen, dropout in hypers:
         window_len=wlen,
         forecast_len=flen,
         dropout=dropout,
-        epochs=100,
+        epochs=30,
         batch_size=256,
         testpct=0.40,
-        learning_rate=0.005,
-        years=["2015", "2016", "2019"],
+        learning_rate=0.0005,
+        years=["2017", "2018", "2019"],
         data_dir="/crypto_data",
-        skip_rows=2,
+        skip_rows=200000,
     ).run()
