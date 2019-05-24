@@ -16,6 +16,8 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense, Dropout, LSTM, CuDNNLSTM, BatchNormalization
 from tensorflow.keras.callbacks import TensorBoard, ModelCheckpoint
 from sklearn.preprocessing import MinMaxScaler
+from tensorflow.keras import regularizers
+from matplotlib import pyplot
 
 
 class PriceRNN:
@@ -32,6 +34,8 @@ class PriceRNN:
         loss_func="sparse_categorical_crossentropy",
         batch_size=64,
         hidden_node_sizes=[128] * 4,
+        learning_rate=0.001,
+        decay=1e-6,
         data_provider="gemini",
         data_dir="data",
         skip_rows=2,
@@ -50,6 +54,8 @@ class PriceRNN:
         self.loss_func = loss_func
         self.batch_size = batch_size
         self.hidden_node_sizes = hidden_node_sizes
+        self.learning_rate = learning_rate
+        self.decay = decay
         self.name = f"{pair}-{window_len}-window-{forecast_len}-pred-{int(time.time())}"
         self.skip_rows = skip_rows
         self.col_names = [
@@ -222,12 +228,16 @@ class PriceRNN:
         model.add(Dropout(self.dropout))
         model.add(BatchNormalization())
 
+        model.add(Dense(self.hidden_node_sizes[3]))
+        model.add(Dropout(self.dropout))
+        model.add(BatchNormalization())
+
         model.add(Dense(32, activation="relu"))
         model.add(Dropout(self.dropout))
 
         model.add(Dense(2, activation="softmax"))
 
-        opt = tf.keras.optimizers.Adam(lr=0.001, decay=1e-6)
+        opt = tf.keras.optimizers.Adam(lr=self.learning_rate, decay=self.decay)
 
         model.compile(loss=self.loss_func, optimizer=opt, metrics=["accuracy"])
 
@@ -255,11 +265,26 @@ class PriceRNN:
             callbacks=[tensorboard, checkpoint],
         )
 
+        history = model.fit(X, Y, epochs=100, validation_data=(valX, valY))
+        print(history.history["loss"])
+        print(history.history["acc"])
+        print(history.history["val_loss"])
+        print(history.history["val_acc"])
+
+        if not os.path.exists("plots"):
+            os.makedirs("plots")
+        pyplot.title("model train vs validation loss")
+        pyplot.ylabel("loss")
+        pyplot.xlabel("epoch")
+        pyplot.legend(["train", "validation"], loc="upper right")
+        plt.savefig(f"plots/{self.name}.png")
+
         print(model.evaluate(x_test, y_test))
 
 
+# We aim to answer: If you were to buy at random, what interval in mins shows best probability of profit
 # TODO: stochastic random search and/or bayesian hyperparam optimization
-hypers = [(180, 3, 0.6), (360, 3, 0.6)]
+hypers = [(120, 3, 0.5)]
 for wlen, flen, dropout in hypers:
     wlen = int(wlen)
     flen = int(flen)
@@ -274,9 +299,11 @@ for wlen, flen, dropout in hypers:
         window_len=wlen,
         forecast_len=flen,
         dropout=dropout,
-        epochs=50,
+        epochs=100,
         batch_size=256,
-        years=["2015", "2016", "2017", "2018", "2019"],
+        testpct=0.40,
+        learning_rate=0.005,
+        years=["2015", "2016", "2019"],
         data_dir="/crypto_data",
         skip_rows=2,
     ).run()
