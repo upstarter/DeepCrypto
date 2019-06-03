@@ -1,4 +1,9 @@
 .DS_Store
 models/
+plots/
 logs/
 tmp/
+.floydignore
+.floydexpt
+.floyddata
+data/.floyddata
