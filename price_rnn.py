@@ -269,14 +269,6 @@ class PriceRNN:
         model.add(Dropout(self.dropout))
         model.add(BatchNormalization())
 
-        # model.add(LSTM(self.neurons[2]))
-        # model.add(Dropout(self.dropout))
-        # model.add(BatchNormalization())
-        #
-        # model.add(LSTM(self.neurons[2]))
-        # model.add(Dropout(self.dropout))
-        # model.add(BatchNormalization())
-        #
         model.add(Dense(self.neurons[3]))
         model.add(Dropout(self.dropout))
         model.add(BatchNormalization())
